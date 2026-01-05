@@ -4,9 +4,20 @@ A production-grade real-time multiplayer Connect Four game built with **Go backe
 
 ## 🚀 Live Demo
 
-**🎮 Play Now**: [https://connect4-frontend-jt1b.onrender.com](https://connect4-frontend-jt1b.onrender.com)  
+**🎮 [Play Now - Live Game](https://connect4-frontend-iqa5.onrender.com/)**  
+Experience the full game with real-time multiplayer, competitive bot AI, and live leaderboard!
+
 **🔧 Backend API**: [https://connect4-backend-jt1b.onrender.com](https://connect4-backend-jt1b.onrender.com)  
-**📊 Leaderboard**: [https://connect4-backend-jt1b.onrender.com/leaderboard](https://connect4-backend-jt1b.onrender.com/leaderboard)
+**📊 Live Leaderboard**: [https://connect4-backend-jt1b.onrender.com/leaderboard](https://connect4-backend-jt1b.onrender.com/leaderboard)  
+**💚 Health Check**: [https://connect4-backend-jt1b.onrender.com/health](https://connect4-backend-jt1b.onrender.com/health)
+
+### 🎯 Quick Start - Play Now!
+
+1. **Visit**: [https://connect4-frontend-iqa5.onrender.com/](https://connect4-frontend-iqa5.onrender.com/)
+2. **Enter your username** and click "Find Game"
+3. **Wait 10 seconds** - You'll be matched with a bot if no other players are available
+4. **Play** - Drop discs by clicking columns, first to connect 4 wins!
+5. **Check Leaderboard** - See your wins and rankings in real-time
 
 ## 🛠 Tech Stack
 
@@ -34,16 +45,20 @@ A production-grade real-time multiplayer Connect Four game built with **Go backe
 
 ### 🌐 Real-Time Features
 - **Sub-100ms Latency**: Instant move propagation between players
-- **Automatic Reconnection**: Seamless recovery from network issues
-- **Live Leaderboard**: Real-time win statistics and rankings
-- **Game State Preservation**: Active games survive disconnections
-- **Forfeiture Handling**: Automatic win for remaining player
+- **Automatic Reconnection**: Seamless recovery from network issues (30-second grace period)
+- **Live Leaderboard**: Real-time win statistics and rankings updated after each game
+- **Game State Preservation**: Active games survive disconnections and can be resumed
+- **Forfeiture Handling**: Automatic win for remaining player if opponent disconnects
+- **Cross-Device Play**: Share Game ID to play with friends on different devices
+- **Connection Status**: Real-time connection monitoring with visual indicators
 
 ### 📊 Analytics & Monitoring
-- **Kafka Event Streaming**: Real-time game analytics
+- **Kafka Event Streaming**: Real-time game analytics and event tracking
 - **Performance Metrics**: Game duration, win rates, player statistics
-- **Health Monitoring**: System status and performance tracking
-- **Graceful Degradation**: Works without database using mock data
+- **Health Monitoring**: System status and performance tracking via `/health` endpoint
+- **Database Integration**: PostgreSQL with automatic migrations and connection retry logic
+- **Graceful Degradation**: Works without database (returns empty leaderboard instead of errors)
+- **Error Logging**: Comprehensive logging for debugging and monitoring
 
 ## 🚀 Quick Start
 
@@ -93,16 +108,30 @@ start.bat
 
 ## 🎮 How to Play
 
-1. **Enter Username**: Choose your player name
-2. **Find Game**: Click "Find Game" to join matchmaking
-3. **Auto-Pairing**: Get matched with another player or bot (10s timeout)
-4. **Play**: Drop discs by clicking columns - first to connect 4 wins!
-5. **Reconnect**: If disconnected, rejoin automatically within 30 seconds
+### Single Player vs Bot
+1. **Visit**: [https://connect4-frontend-iqa5.onrender.com/](https://connect4-frontend-iqa5.onrender.com/)
+2. **Enter Username**: Choose your unique player name
+3. **Find Game**: Click "🎮 Find Game" button
+4. **Wait for Match**: System searches for opponent (10 seconds)
+5. **Bot Game Starts**: If no player found, competitive bot joins automatically
+6. **Make First Move**: You always go first - click any column to drop your disc
+7. **Strategic Play**: Bot responds with intelligent moves - block its threats!
+8. **Win Condition**: Connect 4 discs vertically, horizontally, or diagonally to win!
 
 ### Multiplayer Features
-- **Game ID Sharing**: Copy Game ID to play with friends across devices
-- **Real-Time Sync**: See opponent moves instantly
-- **Cross-Platform**: Play on desktop, mobile, or tablet
+- **Game ID Sharing**: Copy Game ID from active game to share with friends
+- **Cross-Device Play**: Share Game ID to play on different devices/browsers
+- **Real-Time Sync**: See opponent moves instantly with <100ms latency
+- **Cross-Platform**: Works on desktop, mobile, tablet - responsive design
+- **Reconnection**: If disconnected, reconnect within 30 seconds to resume game
+- **Auto-Forfeiture**: Opponent wins if you don't reconnect within 30 seconds
+
+### Game Rules
+- **Board Size**: 7 columns × 6 rows (classic Connect Four dimensions)
+- **Objective**: Connect 4 discs in a row (vertical, horizontal, or diagonal)
+- **Turns**: Players alternate dropping discs into columns
+- **Win**: First player to connect 4 wins the game
+- **Draw**: If board fills completely with no winner, game ends in draw
 
 ## 🏗 Architecture
 
@@ -202,13 +231,40 @@ REACT_APP_WS_URL=ws://localhost:8081/ws
 
 ## 🏭 Production Deployment
 
-### Docker Deployment
+### Current Live Deployment
+- **Frontend**: Deployed on Render.com at [https://connect4-frontend-iqa5.onrender.com/](https://connect4-frontend-iqa5.onrender.com/)
+- **Backend**: Deployed on Render.com with WebSocket support
+- **Database**: PostgreSQL with automatic connection retry and migrations
+- **Status**: ✅ Fully operational and playable
+
+### Deployment Options
+
+#### Option 1: Render.com (Current Setup)
+1. **Backend Deployment**:
+   - Connect GitHub repository to Render
+   - Set build command: `cd backend && go build -o server cmd/server/main.go`
+   - Set start command: `./server`
+   - Add environment variables (see Configuration section)
+   - Enable WebSocket support in Render settings
+
+2. **Frontend Deployment**:
+   - Connect GitHub repository to Render
+   - Set build command: `cd frontend && npm install && npm run build`
+   - Set publish directory: `frontend/build`
+   - Add environment variables for API URLs
+
+3. **Database Setup**:
+   - Create PostgreSQL database on Render
+   - Copy connection string to `DATABASE_URL` environment variable
+   - See `DEPLOYMENT.md` for detailed instructions
+
+#### Option 2: Docker Deployment
 ```bash
 # Build and run with Docker Compose
 docker-compose up --build
 ```
 
-### Manual Deployment
+#### Option 3: Manual Deployment
 ```bash
 # Backend
 cd backend
@@ -218,8 +274,15 @@ go build -o server cmd/server/main.go
 # Frontend
 cd frontend
 npm run build
-# Serve build/ directory with your web server
+# Serve build/ directory with your web server (nginx, Apache, etc.)
 ```
+
+### Environment Variables for Production
+See `DEPLOYMENT.md` for comprehensive deployment guide including:
+- Database setup (Render, Railway, Supabase, AWS RDS)
+- Environment variable configuration
+- Troubleshooting guide
+- Health check verification
 
 ## 📈 Performance
 
@@ -254,6 +317,23 @@ GitHub: [VairagPatel](https://github.com/VairagPatel)
 ## 📄 License
 
 This project is developed as part of a backend engineering assignment, showcasing real-time multiplayer game development with Go and React.
+
+## 🔗 Quick Links
+
+- **🎮 [Play the Game](https://connect4-frontend-iqa5.onrender.com/)** - Live production version
+- **📊 [View Leaderboard](https://connect4-backend-jt1b.onrender.com/leaderboard)** - Real-time rankings
+- **💚 [Health Check](https://connect4-backend-jt1b.onrender.com/health)** - System status
+- **📖 [Deployment Guide](DEPLOYMENT.md)** - Database setup instructions
+- **🐙 [GitHub Repository](https://github.com/VairagPatel/Connect4)** - Source code
+
+## 📝 Recent Updates
+
+- ✅ Fixed database connection issues for production hosting
+- ✅ Implemented automatic table creation and migrations
+- ✅ Fixed leaderboard to show real usernames instead of mock data
+- ✅ Added retry logic for database connections
+- ✅ Enhanced error logging and diagnostics
+- ✅ Improved bot move handling and game completion detection
 
 ## 🎮 **Game Features & Mechanics**
 
@@ -609,14 +689,16 @@ func (b *Bot) GetBestMove(game *models.Game) int
 - **Performance Optimization**: Indexed database queries, efficient memory usage
 - **Developer Experience**: Hot reloading, debugging tools, comprehensive documentation
 
-### **🎮 Live Demo Ready**
-- **Backend Server**: ✅ Running on port 8081
-- **Frontend Application**: ✅ Running on port 3001  
-- **Database**: ✅ PostgreSQL with migrations applied
-- **Game Functionality**: ✅ Fully playable at http://localhost:3001
+### **🎮 Live Production Deployment**
+- **Frontend**: ✅ [Live at https://connect4-frontend-iqa5.onrender.com/](https://connect4-frontend-iqa5.onrender.com/)
+- **Backend API**: ✅ Running on Render.com with WebSocket support
+- **Database**: ✅ PostgreSQL with automatic migrations and connection retry
+- **Game Functionality**: ✅ Fully playable online with real-time multiplayer
 - **Multiplayer**: ✅ Cross-device gameplay with Game ID sharing
-- **Bot AI**: ✅ Strategic opponent with advanced decision making
+- **Bot AI**: ✅ Strategic competitive bot with threat analysis
 - **Leaderboard**: ✅ Real-time win tracking and statistics
+- **Health Monitoring**: ✅ `/health` endpoint for system status
+- **Error Handling**: ✅ Graceful degradation and comprehensive logging
 
 ## 🎊 **Project Highlights**
 
