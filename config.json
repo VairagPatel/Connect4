@@ -1,0 +1,30 @@
+{
+  "development": {
+    "backend": {
+      "port": 8081,
+      "host": "localhost",
+      "cors_origins": ["http://localhost:3001"],
+      "database_url": "postgres://postgres:Vairag@310@localhost/connect_four?sslmode=disable",
+      "kafka_brokers": "localhost:9092"
+    },
+    "frontend": {
+      "port": 3001,
+      "api_url": "http://localhost:8081",
+      "ws_url": "ws://localhost:8081/ws"
+    }
+  },
+  "production": {
+    "backend": {
+      "port": 8081,
+      "host": "0.0.0.0",
+      "cors_origins": ["https://yourdomain.com"],
+      "database_url": "${DATABASE_URL}",
+      "kafka_brokers": "${KAFKA_BROKERS}"
+    },
+    "frontend": {
+      "port": 3000,
+      "api_url": "${REACT_APP_API_URL}",
+      "ws_url": "${REACT_APP_WS_URL}"
+    }
+  }
+}

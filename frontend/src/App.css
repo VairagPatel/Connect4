@@ -1,0 +1,234 @@
+/* Additional styles specific to App component */
+.app-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  position: relative;
+}
+
+.home-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 8px 16px;
+  font-size: 14px;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.home-button:hover {
+  background-color: #5a6268;
+}
+
+.app-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 15px;
+  animation: logoSpin 20s linear infinite;
+}
+
+.app-logo:hover {
+  animation-duration: 2s;
+}
+
+@keyframes logoSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app h1 {
+  color: #fff;
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: bold;
+  text-align: center;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+}
+
+.app-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  margin: 5px 0 0 0;
+  font-size: 1.1rem;
+  text-align: center;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Button Styles */
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 10px;
+  transition: background-color 0.2s;
+}
+
+button:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.primary-button {
+  background-color: #28a745;
+}
+
+.primary-button:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.secondary-button {
+  background-color: #6c757d;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+/* Matchmaking Timer */
+.matchmaking-timer {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #e3f2fd;
+  border-radius: 8px;
+  border-left: 4px solid #2196f3;
+}
+
+.timer-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.timer-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50, #2196f3);
+  transition: width 1s linear;
+  border-radius: 4px;
+}
+
+/* Game Actions */
+.game-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+/* Join Game Form */
+.join-game-form {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 20px;
+  border: 2px solid #dee2e6;
+}
+
+.join-game-form h3 {
+  margin-top: 0;
+  color: #495057;
+}
+
+.join-game-form input {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border: 2px solid #ced4da;
+  border-radius: 4px;
+  margin: 10px 0;
+  box-sizing: border-box;
+  text-align: center;
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+
+.join-game-form button {
+  width: 100%;
+  margin: 10px 0;
+}
+
+/* Game End Actions */
+.game-end-actions {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 20px;
+  border: 2px solid #28a745;
+}
+
+.game-end-actions h3 {
+  margin-top: 0;
+  color: #28a745;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Game Info Section */
+.game-info-section {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.game-details {
+  text-align: left;
+}
+
+.multiplayer-info {
+  background-color: #e3f2fd;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 15px;
+  border-left: 4px solid #2196f3;
+}
+
+.copy-button {
+  background-color: #17a2b8;
+  font-size: 14px;
+  padding: 8px 16px;
+  margin: 10px 0;
+}
+
+.copy-button:hover:not(:disabled) {
+  background-color: #138496;
+}
+
+.share-info {
+  font-size: 12px;
+  color: #6c757d;
+  margin: 5px 0 0 0;
+  font-style: italic;
+}
+
+.game-active-info {
+  background-color: #fff3cd;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 15px;
+}
