@@ -2,7 +2,11 @@ package database
 
 import (
 	"connect-four/internal/models"
+	"context"
 	"database/sql"
+	"fmt"
+	"log"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -11,17 +15,99 @@ type PostgresDB struct {
 	db *sql.DB
 }
 
+// NewPostgresDB creates a new PostgreSQL database connection with retry logic
 func NewPostgresDB(connectionString string) (*PostgresDB, error) {
-	db, err := sql.Open("postgres", connectionString)
+	if connectionString == "" {
+		return nil, fmt.Errorf("database connection string is empty")
+	}
+
+	var db *sql.DB
+	var err error
+	maxRetries := 5
+	retryDelay := 2 * time.Second
+
+	// Retry connection with exponential backoff
+	for i := 0; i < maxRetries; i++ {
+		db, err = sql.Open("postgres", connectionString)
+		if err != nil {
+			log.Printf("Database connection attempt %d/%d failed: %v", i+1, maxRetries, err)
+			if i < maxRetries-1 {
+				time.Sleep(retryDelay)
+				retryDelay *= 2 // Exponential backoff
+				continue
+			}
+			return nil, fmt.Errorf("failed to open database connection after %d attempts: %w", maxRetries, err)
+		}
+
+		// Set connection pool settings
+		db.SetMaxOpenConns(25)
+		db.SetMaxIdleConns(5)
+		db.SetConnMaxLifetime(5 * time.Minute)
+
+		// Test connection with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = db.PingContext(ctx)
+		cancel()
+
+		if err != nil {
+			log.Printf("Database ping attempt %d/%d failed: %v", i+1, maxRetries, err)
+			db.Close()
+			if i < maxRetries-1 {
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+				continue
+			}
+			return nil, fmt.Errorf("failed to ping database after %d attempts: %w", maxRetries, err)
+		}
+
+		log.Printf("Successfully connected to PostgreSQL database")
+		break
+	}
+
+	postgresDB := &PostgresDB{db: db}
+
+	// Run migrations automatically
+	if err := postgresDB.RunMigrations(); err != nil {
+		log.Printf("Warning: Failed to run database migrations: %v", err)
+		// Don't fail completely, but log the error
+	}
+
+	return postgresDB, nil
+}
+
+// RunMigrations creates necessary tables if they don't exist
+func (p *PostgresDB) RunMigrations() error {
+	migrationSQL := `
+		-- Create games table
+		CREATE TABLE IF NOT EXISTS games (
+			id VARCHAR(50) PRIMARY KEY,
+			player1_id VARCHAR(100) NOT NULL,
+			player1_username VARCHAR(50) NOT NULL,
+			player2_id VARCHAR(100) NOT NULL,
+			player2_username VARCHAR(50) NOT NULL,
+			winner_id VARCHAR(100),
+			move_count INTEGER NOT NULL DEFAULT 0,
+			duration_seconds INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+			finished_at TIMESTAMP,
+			is_bot_game BOOLEAN NOT NULL DEFAULT FALSE
+		);
+
+		-- Create indexes for better query performance
+		CREATE INDEX IF NOT EXISTS idx_games_winner ON games(winner_id);
+		CREATE INDEX IF NOT EXISTS idx_games_created_at ON games(created_at);
+		CREATE INDEX IF NOT EXISTS idx_games_is_bot ON games(is_bot_game);
+		CREATE INDEX IF NOT EXISTS idx_games_player1 ON games(player1_username);
+		CREATE INDEX IF NOT EXISTS idx_games_player2 ON games(player2_username);
+	`
+
+	_, err := p.db.Exec(migrationSQL)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, err
-	}
-
-	return &PostgresDB{db: db}, nil
+	log.Printf("Database migrations completed successfully")
+	return nil
 }
 
 func (p *PostgresDB) Close() error {
@@ -104,7 +190,7 @@ func (p *PostgresDB) GetLeaderboard(limit int) ([]LeaderboardEntry, error) {
 
 	rows, err := p.db.Query(query, limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query leaderboard: %w", err)
 	}
 	defer rows.Close()
 
@@ -113,9 +199,19 @@ func (p *PostgresDB) GetLeaderboard(limit int) ([]LeaderboardEntry, error) {
 		var entry LeaderboardEntry
 		err := rows.Scan(&entry.Username, &entry.Wins, &entry.TotalGames)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan leaderboard row: %w", err)
 		}
 		leaderboard = append(leaderboard, entry)
+	}
+
+	// Check for errors from iterating over rows
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating leaderboard rows: %w", err)
+	}
+
+	// Return empty array if no results (instead of nil)
+	if leaderboard == nil {
+		leaderboard = []LeaderboardEntry{}
 	}
 
 	return leaderboard, nil

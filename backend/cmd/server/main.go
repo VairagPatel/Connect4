@@ -31,11 +31,22 @@ func main() {
 		corsOrigins = "http://localhost:3001" // Default for development
 	}
 
-	// Initialize database
+	// Initialize database with better error handling
+	log.Printf("Attempting to connect to database...")
+	if dbURL == "" {
+		log.Printf("WARNING: DATABASE_URL environment variable is not set. Database features will be disabled.")
+		log.Printf("To enable database, set DATABASE_URL environment variable.")
+		log.Printf("Example: DATABASE_URL=postgres://user:password@host:port/database?sslmode=require")
+	}
+	
 	db, err := database.NewPostgresDB(dbURL)
 	if err != nil {
-		log.Printf("Warning: Could not connect to database: %v", err)
+		log.Printf("ERROR: Could not connect to database: %v", err)
+		log.Printf("Database features (leaderboard, game persistence) will be disabled.")
+		log.Printf("The application will continue to run, but game data will not be saved.")
 		db = nil
+	} else {
+		log.Printf("Successfully connected to PostgreSQL database")
 	}
 	defer func() {
 		if db != nil {
@@ -163,13 +174,11 @@ func handleLeaderboard(w http.ResponseWriter, r *http.Request, db *database.Post
 	w.Header().Set("Access-Control-Allow-Origin", corsOrigins)
 
 	if db == nil {
-		// Return mock data if database is not available
-		mockLeaderboard := []database.LeaderboardEntry{
-			{Username: "Player1", Wins: 10, TotalGames: 15},
-			{Username: "Player2", Wins: 8, TotalGames: 12},
-			{Username: "Player3", Wins: 5, TotalGames: 8},
-		}
-		json.NewEncoder(w).Encode(mockLeaderboard)
+		// Return empty array if database is not available (instead of mock data)
+		// This prevents showing fake "Player1", "Player2" data in production
+		log.Printf("Leaderboard request received but database is not available")
+		emptyLeaderboard := []database.LeaderboardEntry{}
+		json.NewEncoder(w).Encode(emptyLeaderboard)
 		return
 	}
 

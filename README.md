@@ -158,14 +158,20 @@ start.bat
 
 ### Environment Variables
 
-**Backend** (`backend/.env.development`):
+**Backend** (Set in your hosting service's environment variables):
 ```bash
 PORT=8081
-DATABASE_URL=postgres://postgres:password@localhost/connect_four?sslmode=disable
+DATABASE_URL=postgres://user:password@host:port/database?sslmode=require
 KAFKA_BROKERS=localhost:9092
-CORS_ORIGINS=http://localhost:3001
+CORS_ORIGINS=http://localhost:3001,https://your-frontend-domain.com
 BOT_DIFFICULTY=normal
 ```
+
+**Important for Production:**
+- Set `DATABASE_URL` environment variable in your hosting service
+- The backend will automatically create database tables on startup
+- If `DATABASE_URL` is not set, the app will work but won't save games or show leaderboard
+- See `DEPLOYMENT.md` for detailed database setup instructions
 
 **Frontend** (`frontend/.env`):
 ```bash
