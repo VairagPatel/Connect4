@@ -22,7 +22,11 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in development
+		// Allow connections from any origin in production
+		// In a real production environment, you'd want to check specific origins
+		origin := r.Header.Get("Origin")
+		log.Printf("WebSocket connection attempt from origin: %s", origin)
+		return true // Allow all origins for now
 	},
 }
 
@@ -55,11 +59,15 @@ type ReconnectMessage struct {
 }
 
 func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	log.Printf("Attempting WebSocket upgrade for %s", r.RemoteAddr)
+	
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Printf("WebSocket upgrade failed: %v", err)
 		return
 	}
+	
+	log.Printf("WebSocket connection established for %s", r.RemoteAddr)
 
 	client := &Client{
 		hub:    hub,
@@ -335,63 +343,109 @@ func (c *Client) handleMove(column int) {
 		// CRITICAL: Bot only moves when it's turn 2 (after human player's move)
 		// WHY: Since human is always Player1 and game starts with CurrentTurn=1,
 		// this ensures human always makes the first move before bot responds
-		c.handleBotMoveSync(game)
+		log.Printf("BOT_TRIGGER: Triggering bot move for game %s, CurrentTurn: %d", game.ID, game.CurrentTurn)
+		go c.handleBotMoveSync(game)
+	} else {
+		log.Printf("BOT_CHECK: Game %s - IsBot: %v, CurrentTurn: %d, Player2.IsBot: %v", 
+			game.ID, game.Player2.IsBot, game.CurrentTurn, game.Player2.IsBot)
 	}
 }
 
 func (c *Client) handleBotMoveSync(gameModel *models.Game) {
+	log.Printf("BOT_MOVE_START: Bot starting move calculation for game %s", gameModel.ID)
+	
 	// Very minimal delay for natural feel
 	time.Sleep(50 * time.Millisecond)
 
+	// CRITICAL: Re-fetch game state to ensure we have the latest version
+	// WHY: Prevents race conditions where game state might have changed since function was called
+	c.hub.gamesMutex.RLock()
+	gameState, exists := c.hub.games[gameModel.ID]
+	c.hub.gamesMutex.RUnlock()
+	
+	if !exists {
+		log.Printf("BOT_MOVE_ERROR: Game %s no longer exists", gameModel.ID)
+		return
+	}
+	
 	// Create bot with appropriate difficulty from game settings
 	// WHY: Consistent bot behavior throughout the game based on initial configuration
 	var bot *game.Bot
-	if gameModel.BotDifficulty == "easy" {
-		bot = game.NewBotWithDifficulty(gameModel.Player2.ID, game.Easy)
+	if gameState.BotDifficulty == "easy" {
+		bot = game.NewBotWithDifficulty(gameState.Player2.ID, game.Easy)
 	} else {
-		bot = game.NewBotWithDifficulty(gameModel.Player2.ID, game.Normal)
+		bot = game.NewBotWithDifficulty(gameState.Player2.ID, game.Normal)
 	}
 	
-	botColumn := bot.GetBestMove(gameModel)
+	log.Printf("BOT_MOVE_CALC: Bot calculating best move for game %s", gameState.ID)
+	botColumn := bot.GetBestMove(gameState)
 
 	if botColumn == -1 {
-		log.Printf("Bot couldn't find valid move")
+		log.Printf("BOT_ERROR: Bot couldn't find valid move for game %s", gameState.ID)
 		return
 	}
+
+	log.Printf("BOT_MOVE_SELECTED: Bot selected column %d for game %s", botColumn, gameState.ID)
 
 	// Make bot move with proper locking
 	c.hub.gamesMutex.Lock()
-	move, err := c.engine.MakeMove(gameModel, gameModel.Player2.ID, botColumn)
+	
+	// CRITICAL: Re-fetch game state again while locked to ensure we have the absolute latest version
+	// WHY: Prevents race conditions where game state might have changed between read lock and write lock
+	gameState, exists = c.hub.games[gameState.ID]
+	if !exists {
+		c.hub.gamesMutex.Unlock()
+		log.Printf("BOT_MOVE_ERROR: Game %s no longer exists", gameState.ID)
+		return
+	}
+	
+	// Assign sequence number for idempotency tracking
+	expectedMoveNumber := gameState.LastMoveNumber + 1
+	
+	move, err := c.engine.MakeMove(gameState, gameState.Player2.ID, botColumn)
 	if err != nil {
 		c.hub.gamesMutex.Unlock()
-		log.Printf("Bot move error: %v", err)
+		log.Printf("BOT_MOVE_ERROR: Bot move error in game %s: %v", gameState.ID, err)
 		return
 	}
 
+	// Assign sequence number for idempotency tracking
+	move.MoveNumber = expectedMoveNumber
+	gameState.LastMoveNumber = expectedMoveNumber
+
 	// Update game state while still locked
-	c.hub.games[gameModel.ID] = gameModel
+	c.hub.games[gameState.ID] = gameState
 	c.hub.gamesMutex.Unlock()
+
+	log.Printf("BOT_MOVE_SUCCESS: Bot made move %d in game %s (column %d)", 
+		gameState.MoveCount, gameState.ID, botColumn)
 
 	// Broadcast bot move
 	event := models.GameEvent{
 		Type:      models.EventMovePlayed,
-		GameID:    gameModel.ID,
+		GameID:    gameState.ID,
 		Data:      map[string]interface{}{
 			"move": move,
-			"game": gameModel,
+			"game": gameState,
 		},
 		Timestamp: time.Now(),
 	}
-	c.hub.broadcastToGame(gameModel.ID, event)
+	c.hub.broadcastToGame(gameState.ID, event)
+	
+	// Publish to Kafka analytics (non-blocking)
+	c.hub.PublishEvent(event)
 
-	// Check if bot won
-	if gameModel.State == models.GameStateFinished {
+	// Check if bot won or game ended
+	if gameState.State == models.GameStateFinished {
 		// Set finished timestamp
+		c.hub.gamesMutex.Lock()
 		now := time.Now()
-		gameModel.FinishedAt = &now
+		gameState.FinishedAt = &now
+		c.hub.games[gameState.ID] = gameState
+		c.hub.gamesMutex.Unlock()
 		
 		var eventType string
-		if gameModel.Winner != nil {
+		if gameState.Winner != nil {
 			eventType = models.EventGameWon
 		} else {
 			eventType = models.EventGameDraw
@@ -399,14 +453,17 @@ func (c *Client) handleBotMoveSync(gameModel *models.Game) {
 
 		endEvent := models.GameEvent{
 			Type:      eventType,
-			GameID:    gameModel.ID,
-			Data:      gameModel,
+			GameID:    gameState.ID,
+			Data:      gameState,
 			Timestamp: time.Now(),
 		}
-		c.hub.broadcastToGame(gameModel.ID, endEvent)
+		c.hub.broadcastToGame(gameState.ID, endEvent)
+		
+		// Publish to Kafka analytics (non-blocking)
+		c.hub.PublishEvent(endEvent)
 		
 		// Save completed game to database (async)
-		go c.saveCompletedGame(gameModel)
+		go c.saveCompletedGame(gameState)
 	}
 }
 

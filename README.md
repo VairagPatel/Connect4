@@ -4,8 +4,9 @@ A production-grade real-time multiplayer Connect Four game built with **Go backe
 
 ## 🚀 Live Demo
 
-**Frontend**: [Your Live URL Here]  
-**Backend API**: [Your API URL Here]
+**🎮 Play Now**: [https://connect4-frontend-jt1b.onrender.com](https://connect4-frontend-jt1b.onrender.com)  
+**🔧 Backend API**: [https://connect4-backend-jt1b.onrender.com](https://connect4-backend-jt1b.onrender.com)  
+**📊 Leaderboard**: [https://connect4-backend-jt1b.onrender.com/leaderboard](https://connect4-backend-jt1b.onrender.com/leaderboard)
 
 ## 🛠 Tech Stack
 

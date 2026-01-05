@@ -14,14 +14,25 @@ function App() {
   const [matchmakingTimer, setMatchmakingTimer] = useState(0);
   const [gameEnded, setGameEnded] = useState(false);
   const [showGameId, setShowGameId] = useState(false);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const maxConnectionAttempts = 5;
 
-  const fetchLeaderboard = useCallback(async () => {
+  const fetchLeaderboard = useCallback(async (retries = 3) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8081'}/leaderboard`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       setLeaderboard(data);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      // Retry with exponential backoff if retries remaining
+      if (retries > 0) {
+        setTimeout(() => {
+          fetchLeaderboard(retries - 1);
+        }, 1000 * (4 - retries)); // 1s, 2s, 3s delays
+      }
     }
   }, []);
 
@@ -126,27 +137,34 @@ function App() {
         } else {
           setGameStatus(`😔 ${winner.username} wins! Better luck next time.`);
         }
-        // CRITICAL: Refresh leaderboard on game completion
-        // WHY: Ensures users see updated win statistics immediately after games end
-        fetchLeaderboard();
+        // CRITICAL: Refresh leaderboard on game completion with delay
+        // WHY: Database save is async, so we need to wait a bit before fetching
+        // This ensures the leaderboard reflects the completed game
+        setTimeout(() => {
+          fetchLeaderboard();
+        }, 1000); // 1 second delay to allow database save to complete
         break;
         
       case 'GAME_DRAW':
         setGameState(message.data);
         setGameEnded(true);
         setGameStatus('🤝 It\'s a draw! Good game!');
-        // CRITICAL: Refresh leaderboard on draw
+        // CRITICAL: Refresh leaderboard on draw with delay
         // WHY: Draw games still update total game counts in leaderboard
-        fetchLeaderboard();
+        setTimeout(() => {
+          fetchLeaderboard();
+        }, 1000); // 1 second delay to allow database save to complete
         break;
         
       case 'GAME_FORFEITED':
         setGameState(message.data);
         setGameEnded(true);
         setGameStatus('🏃 Opponent forfeited. You win!');
-        // CRITICAL: Refresh leaderboard on forfeit
+        // CRITICAL: Refresh leaderboard on forfeit with delay
         // WHY: Forfeit results in a win that should be reflected in leaderboard
-        fetchLeaderboard();
+        setTimeout(() => {
+          fetchLeaderboard();
+        }, 1000); // 1 second delay to allow database save to complete
         break;
         
       default:
@@ -156,61 +174,103 @@ function App() {
 
   const connectWebSocket = useCallback(() => {
     // Prevent multiple connection attempts
-    if (ws && ws.readyState === WebSocket.CONNECTING) {
-      console.log('WebSocket connection already in progress');
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+      console.log('WebSocket connection already exists or in progress');
       return;
     }
     
-    const websocket = new WebSocket(process.env.REACT_APP_WS_URL || 'ws://localhost:8081/ws');
-    
-    websocket.onopen = () => {
-      console.log('Connected to WebSocket');
-      setConnected(true);
-      setWs(websocket);
-      
-      // CRITICAL: Automatic reconnection with RECONNECT payload
-      // WHY: Ensures seamless reconnection for users with existing games
-      // Automatically sends RECONNECT payload if username exists (user was playing)
-      if (username) {
-        console.log('Auto-reconnecting with username:', username);
-        websocket.send(JSON.stringify({
-          type: 'RECONNECT',
-          data: { username: username }
-        }));
-      }
-    };
-
-    websocket.onclose = (event) => {
-      console.log('Disconnected from WebSocket', event.code, event.reason);
-      setConnected(false);
+    // Close existing connection if any
+    if (ws) {
+      ws.close();
       setWs(null);
+    }
+    
+    // Try production URL first, then fallback to localhost
+    const wsUrls = [
+      process.env.REACT_APP_WS_URL || 'wss://connect4-backend-jt1b.onrender.com/ws',
+      'ws://localhost:8081/ws'
+    ];
+    
+    const tryConnection = (urlIndex = 0) => {
+      if (urlIndex >= wsUrls.length) {
+        console.error('All WebSocket URLs failed');
+        setGameStatus('❌ Unable to connect to game server');
+        return;
+      }
       
-      // Only attempt reconnection if it wasn't a normal closure
-      if (event.code !== 1000) {
-        // Automatic reconnection attempt after 3 seconds
-        // WHY: Provides seamless recovery from temporary network issues
-        console.log('Attempting reconnection in 3 seconds...');
-        setTimeout(connectWebSocket, 3000);
-      }
-    };
+      const websocketUrl = wsUrls[urlIndex];
+      console.log(`Attempting connection ${urlIndex + 1}/${wsUrls.length}: ${websocketUrl}`);
+      
+      const websocket = new WebSocket(websocketUrl);
+      
+      const connectionTimeout = setTimeout(() => {
+        console.log(`Connection timeout for ${websocketUrl}`);
+        websocket.close();
+        tryConnection(urlIndex + 1);
+      }, 10000);
+      
+      websocket.onopen = () => {
+        clearTimeout(connectionTimeout);
+        console.log('Connected to WebSocket:', websocketUrl);
+        setConnected(true);
+        setWs(websocket);
+        setConnectionAttempts(0);
+        
+        if (username) {
+          console.log('Auto-reconnecting with username:', username);
+          websocket.send(JSON.stringify({
+            type: 'RECONNECT',
+            data: { username: username }
+          }));
+        }
+      };
 
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setGameStatus('❌ Connection error. Reconnecting...');
-    };
+      websocket.onclose = (event) => {
+        clearTimeout(connectionTimeout);
+        console.log('Disconnected from WebSocket', event.code, event.reason);
+        setConnected(false);
+        setWs(null);
+        
+        // Try next URL on connection failure
+        if (event.code !== 1000 && event.code !== 1001) {
+          if (urlIndex < wsUrls.length - 1) {
+            tryConnection(urlIndex + 1);
+          } else if (connectionAttempts < maxConnectionAttempts) {
+            const nextAttempt = connectionAttempts + 1;
+            setConnectionAttempts(nextAttempt);
+            console.log(`Retry attempt ${nextAttempt}/${maxConnectionAttempts} in 5 seconds...`);
+            
+            setTimeout(() => {
+              tryConnection(0); // Start from first URL again
+            }, 5000);
+          } else {
+            console.log('Max connection attempts reached');
+            setGameStatus('❌ Connection failed. Please refresh the page.');
+          }
+        }
+      };
 
-    websocket.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        handleWebSocketMessage(message);
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
+      websocket.onerror = (error) => {
+        clearTimeout(connectionTimeout);
+        console.error('WebSocket error:', error);
+        setGameStatus('❌ Connection error. Trying alternative server...');
+      };
+
+      websocket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleWebSocketMessage(message);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+      setWs(websocket);
     };
     
-    // Store websocket reference for cleanup
-    setWs(websocket);
-  }, [username, handleWebSocketMessage, ws]);
+    tryConnection(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, handleWebSocketMessage, connectionAttempts, maxConnectionAttempts]);
 
   useEffect(() => {
     connectWebSocket();

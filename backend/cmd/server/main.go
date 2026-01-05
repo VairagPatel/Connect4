@@ -63,16 +63,7 @@ func main() {
 
 	// Setup HTTP routes with better error handling
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		// Add CORS headers for WebSocket
-		w.Header().Set("Access-Control-Allow-Origin", corsOrigins)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		
+		log.Printf("WebSocket connection request from %s, Origin: %s", r.RemoteAddr, r.Header.Get("Origin"))
 		websocket.ServeWS(hub, w, r)
 	})
 
@@ -87,6 +78,7 @@ func main() {
 		
 		status := map[string]interface{}{
 			"status": "healthy",
+			"timestamp": time.Now().Unix(),
 			"database": db != nil,
 			"kafka": kafkaProducer != nil,
 		}
@@ -94,7 +86,7 @@ func main() {
 		json.NewEncoder(w).Encode(status)
 	})
 
-	// Enable CORS for all routes
+	// Enable CORS for preflight requests
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", corsOrigins)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -105,7 +97,19 @@ func main() {
 			return
 		}
 		
-		w.WriteHeader(http.StatusNotFound)
+		// Only return 404 for unknown paths
+		if r.URL.Path != "/" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		
+		// Root path - return basic info
+		w.Header().Set("Content-Type", "application/json")
+		info := map[string]string{
+			"service": "4-in-a-row-backend",
+			"status": "running",
+		}
+		json.NewEncoder(w).Encode(info)
 	})
 
 	// Start server
